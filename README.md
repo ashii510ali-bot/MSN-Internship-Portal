@@ -14,7 +14,7 @@ cd server
 cp .env.example .env          # set MONGO_URI and JWT_SECRET
 npm install
 npm run seed                  # demo users + full workflow chain
-npm run dev                   # http://localhost:5000
+npm run dev                   # https://internship-portal-backend-olive.vercel.app
 
 # 2. Frontend (separate terminal)
 cd client
@@ -22,7 +22,7 @@ npm install
 npm run dev                   # http://localhost:5173
 ```
 
-Vite proxies `/api` to `http://localhost:5000`, so no client `.env` is
+Vite proxies `/api` to `https://internship-portal-backend-olive.vercel.app`, so no client `.env` is
 needed for local development.
 
 ### Seeded accounts

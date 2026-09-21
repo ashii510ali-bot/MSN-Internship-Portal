@@ -24,10 +24,10 @@ import {
 } from "lucide-react";
 
 const TEAM_API_URL =
-  "http://localhost:5000/api/project-manager/team";
+  "https://internship-portal-backend-olive.vercel.app/api/project-manager/team";
 
 const MENTORS_API_URL =
-  "http://localhost:5000/api/auth/mentors";
+  "https://internship-portal-backend-olive.vercel.app/api/auth/mentors";
 
 // ============================================================
 // DEFAULT FORM

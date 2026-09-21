@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 
 const NOTIFICATIONS_API_URL =
-  "http://localhost:5000/api/project-manager/notifications";
+  "https://internship-portal-backend-olive.vercel.app/api/project-manager/notifications";
 
 function ProjectManagerNotifications() {
   const [notifications, setNotifications] =

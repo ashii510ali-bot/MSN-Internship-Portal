@@ -38,13 +38,13 @@ import {
 // ============================================================
 
 const SCRUM_API_URL =
-  "http://localhost:5000/api/project-manager/scrum-review";
+  "https://internship-portal-backend-olive.vercel.app/api/project-manager/scrum-review";
 
 const TEAM_API_URL =
-  "http://localhost:5000/api/project-manager/team";
+  "https://internship-portal-backend-olive.vercel.app/api/project-manager/team";
 
 const PROJECTS_API_URL =
-  "http://localhost:5000/api/project-manager/projects-tasks";
+  "https://internship-portal-backend-olive.vercel.app/api/project-manager/projects-tasks";
 
 // ============================================================
 // EMPTY FORM

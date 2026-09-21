@@ -16,10 +16,10 @@ import {
 import { useNavigate } from "react-router-dom";
 
 const PROFILE_API_URL =
-  "http://localhost:5000/api/project-manager-profile";
+  "https://internship-portal-backend-olive.vercel.app/api/project-manager-profile";
 
 const NOTIFICATIONS_API_URL =
-  "http://localhost:5000/api/project-manager/notifications";
+  "https://internship-portal-backend-olive.vercel.app/api/project-manager/notifications";
 
 const searchItems = [
   {

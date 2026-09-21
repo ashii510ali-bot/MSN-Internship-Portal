@@ -15,8 +15,8 @@ import {
   AlertCircle,
 } from "lucide-react";
 
-const API_URL = "http://localhost:5000/api/cohorts";
-const MENTORS_API_URL = "http://localhost:5000/api/auth/mentors";
+const API_URL = "https://internship-portal-backend-olive.vercel.app/api/cohorts";
+const MENTORS_API_URL = "https://internship-portal-backend-olive.vercel.app/api/auth/mentors";
 
 const initialForm = {
   name: "",

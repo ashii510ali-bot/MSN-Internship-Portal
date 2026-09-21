@@ -17,10 +17,10 @@ import {
 import { useNavigate } from "react-router-dom";
 
 const PROFILE_API_URL =
-  "http://localhost:5000/api/program-manager-profile";
+  "https://internship-portal-backend-olive.vercel.app/api/program-manager-profile";
 
 const NOTIFICATIONS_API_URL =
-  "http://localhost:5000/api/notifications";
+  "https://internship-portal-backend-olive.vercel.app/api/notifications";
 
 const searchItems = [
   {

@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 
 const PROFILE_API_URL =
-  "http://localhost:5000/api/project-manager/profile";
+  "https://internship-portal-backend-olive.vercel.app/api/project-manager/profile";
 
 const initialForm = {
   fullName: "",

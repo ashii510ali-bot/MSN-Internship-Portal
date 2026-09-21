@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 
 const API_URL =
-  "http://localhost:5000/api/auth/mentors";
+  "https://internship-portal-backend-olive.vercel.app/api/auth/mentors";
 
 const emptyForm = {
   name: "",

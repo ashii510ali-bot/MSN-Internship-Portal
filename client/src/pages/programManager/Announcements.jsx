@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 
 const API_URL =
-  "http://localhost:5000/api/announcements";
+  "https://internship-portal-backend-olive.vercel.app/api/announcements";
 
 // ============================================================
 // EMPTY FORM

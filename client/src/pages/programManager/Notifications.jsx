@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 
 const API_URL =
-  "http://localhost:5000/api/notifications";
+  "https://internship-portal-backend-olive.vercel.app/api/notifications";
 
 // ============================================================
 // NOTIFICATION TYPE CONFIG

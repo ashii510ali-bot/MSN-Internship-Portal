@@ -30,16 +30,16 @@ import {
 // ============================================================
 
 const PROJECTS_API_URL =
-  "http://localhost:5000/api/project-manager/projects-tasks";
+  "https://internship-portal-backend-olive.vercel.app/api/project-manager/projects-tasks";
 
 const COHORTS_API_URL =
-  "http://localhost:5000/api/cohorts";
+  "https://internship-portal-backend-olive.vercel.app/api/cohorts";
 
 const MENTORS_API_URL =
-  "http://localhost:5000/api/auth/mentors";
+  "https://internship-portal-backend-olive.vercel.app/api/auth/mentors";
 
 const TODO_API_URL =
-  "http://localhost:5000/api/project-manager/todos";
+  "https://internship-portal-backend-olive.vercel.app/api/project-manager/todos";
 
 // ============================================================
 // EMPTY FORM

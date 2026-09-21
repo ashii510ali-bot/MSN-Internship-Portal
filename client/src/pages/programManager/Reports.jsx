@@ -29,16 +29,16 @@ import {
 // ============================================================
 
 const COHORTS_API_URL =
-  "http://localhost:5000/api/cohorts";
+  "https://internship-portal-backend-olive.vercel.app/api/cohorts";
 
 const MENTORS_API_URL =
-  "http://localhost:5000/api/auth/mentors";
+  "https://internship-portal-backend-olive.vercel.app/api/auth/mentors";
 
 const ANNOUNCEMENTS_API_URL =
-  "http://localhost:5000/api/announcements";
+  "https://internship-portal-backend-olive.vercel.app/api/announcements";
 
 const NOTIFICATIONS_API_URL =
-  "http://localhost:5000/api/notifications";
+  "https://internship-portal-backend-olive.vercel.app/api/notifications";
 
 // ============================================================
 // REPORT TYPES

@@ -6,7 +6,7 @@ import { getToken, clearSession } from "../lib/session";
 // GLOBAL AXIOS SETUP
 //
 // The Program Manager and Project Manager pages were written
-// against absolute "http://localhost:5000/api/..." URLs and did
+// against absolute "https://internship-portal-backend-olive.vercel.app/api/..." URLs and did
 // not send an auth header, because in their own branch those
 // endpoints were unprotected. In the unified backend they are
 // role-guarded.
@@ -23,7 +23,7 @@ import { getToken, clearSession } from "../lib/session";
 // ============================================================
 
 const LEGACY_HOSTS = [
-  "http://localhost:5000",
+  "https://internship-portal-backend-olive.vercel.app",
   "http://127.0.0.1:5000",
 ];
 

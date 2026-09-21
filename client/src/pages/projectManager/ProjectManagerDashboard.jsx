@@ -23,16 +23,16 @@ import {
 import { useNavigate } from "react-router-dom";
 
 const TEAM_API_URL =
-  "http://localhost:5000/api/project-manager/team";
+  "https://internship-portal-backend-olive.vercel.app/api/project-manager/team";
 
 const PROJECTS_API_URL =
-  "http://localhost:5000/api/project-manager/projects-tasks";
+  "https://internship-portal-backend-olive.vercel.app/api/project-manager/projects-tasks";
 
 const SCRUM_API_URL =
-  "http://localhost:5000/api/project-manager/scrum-review";
+  "https://internship-portal-backend-olive.vercel.app/api/project-manager/scrum-review";
 
 const NOTIFICATIONS_API_URL =
-  "http://localhost:5000/api/project-manager/notifications";
+  "https://internship-portal-backend-olive.vercel.app/api/project-manager/notifications";
 
 function ProjectManagerDashboard() {
   const navigate = useNavigate();
