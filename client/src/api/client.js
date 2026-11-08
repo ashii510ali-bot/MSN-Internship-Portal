@@ -1,4 +1,12 @@
-const API_BASE_URL = import.meta.env.VITE_SUPER_ADMIN_API_URL || "/api/super-admin";
+
+import { getToken, clearSession } from "../lib/session";
+
+// ============================================================
+// API CLIENT
+// ============================================================
+
+const API_BASE_URL =
+  import.meta.env.VITE_SUPER_ADMIN_API_URL || "/api/super-admin";
 
 export class ApiError extends Error {
   constructor(message, status, data) {
@@ -9,6 +17,10 @@ export class ApiError extends Error {
   }
 }
 
+// ============================================================
+// TOAST NOTIFICATIONS
+// ============================================================
+
 const toastListeners = new Set();
 
 export const subscribeToast = (listener) => {
@@ -17,91 +29,139 @@ export const subscribeToast = (listener) => {
 };
 
 export const showToast = (message, type = "error") => {
-  toastListeners.forEach((l) => l(message, type));
+  toastListeners.forEach((listener) => listener(message, type));
 };
+
+// ============================================================
+// CSRF TOKEN
+// ============================================================
 
 function getCsrfToken() {
   if (typeof document === "undefined") return null;
-  const match = document.cookie.match(/(?:^|;\s*)msn_csrf_token=([^;]*)/);
-  return match && match[1] ? decodeURIComponent(match[1]) : null;
+
+  const match = document.cookie.match(
+    /(?:^|;\s*)msn_csrf_token=([^;]*)/
+  );
+
+  return match && match[1]
+    ? decodeURIComponent(match[1])
+    : null;
 }
 
+// ============================================================
+// API REQUEST
+// ============================================================
+
 export async function apiClient(endpoint, options = {}) {
-  const url = endpoint.startsWith("http") || endpoint.startsWith("/api")
-    ? endpoint
-    : `${API_BASE_URL}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
+  const url =
+    endpoint.startsWith("http") || endpoint.startsWith("/api")
+      ? endpoint
+      : `${API_BASE_URL}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
 
   const headers = new Headers(options.headers || {});
 
-  // Add default JSON content-type if body is provided and not FormData
+  // JSON Content-Type
   if (
-    options.body &&
+    options.body !== undefined &&
     !(options.body instanceof FormData) &&
     !headers.has("Content-Type")
   ) {
     headers.set("Content-Type", "application/json");
   }
 
-  // Attach token from localStorage if present (for Bearer fallback)
-  if (typeof window !== "undefined") {
-    const token = localStorage.getItem("msn_token");
-    if (token && !headers.has("Authorization")) {
-      headers.set("Authorization", `Bearer ${token}`);
-    }
+  // Attach unified session token
+  const token = getToken();
+
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
   }
 
   // Attach CSRF token
   const csrfToken = getCsrfToken();
+
   if (csrfToken && !headers.has("x-csrf-token")) {
     headers.set("x-csrf-token", csrfToken);
   }
+
   headers.set("X-Requested-With", "XMLHttpRequest");
 
   try {
     const response = await fetch(url, {
       ...options,
       headers,
-      credentials: "include", // Essential for httpOnly cookies
+      credentials: "include",
     });
 
-    // Handle 401 Unauthorized
+    // ========================================================
+    // HANDLE 401 UNAUTHORIZED
+    // ========================================================
+
     if (response.status === 401) {
+      const errData = await response.json().catch(() => ({}));
+
+      // Clear all session keys using unified session handler
+      clearSession();
+
+      // Redirect to the correct login route
       if (
         typeof window !== "undefined" &&
-        !window.location.pathname.startsWith("/sign-in")
+        !window.location.pathname.startsWith("/login")
       ) {
-        localStorage.removeItem("msn_token");
-        localStorage.removeItem("msn_user");
-        window.location.href = "/sign-in";
+        window.location.replace("/login");
       }
-      const errData = await response.json().catch(() => ({}));
-      throw new ApiError(errData.error || "Unauthorized", 401, errData);
+
+      throw new ApiError(
+        errData.message || errData.error || "Your session has expired. Please login again.",
+        401,
+        errData
+      );
     }
 
-    // Handle 403 Forbidden
+    // ========================================================
+    // HANDLE 403 FORBIDDEN
+    // ========================================================
+
     if (response.status === 403) {
       const errData = await response.json().catch(() => ({}));
-      showToast(errData.error || "Permission denied for this action", "error");
-      throw new ApiError(errData.error || "Forbidden", 403, errData);
+
+      showToast(
+        errData.message || errData.error || "Permission denied for this action",
+        "error"
+      );
+
+      throw new ApiError(
+        errData.message || errData.error || "Forbidden",
+        403,
+        errData
+      );
     }
 
-    const data = await response.json();
+    // ========================================================
+    // HANDLE RESPONSE
+    // ========================================================
+
+    const data = await response.json().catch(() => ({}));
 
     if (!response.ok || data.success === false) {
       throw new ApiError(
         data.message || data.error || "An error occurred",
         response.status,
-        data,
+        data
       );
     }
 
     return data;
+
   } catch (error) {
     if (error instanceof ApiError) {
       throw error;
     }
-    const message = error instanceof Error ? error.message : "Network error";
+
+    const message =
+      error instanceof Error ? error.message : "Network error";
+
     showToast(message, "error");
+
     throw new ApiError(message, 500);
   }
 }

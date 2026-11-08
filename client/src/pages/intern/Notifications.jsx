@@ -1,5 +1,7 @@
+
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import axios from "axios";
 import { Bell, CheckCheck, Trash2 } from "lucide-react";
 
 import {
@@ -9,11 +11,11 @@ import {
   deleteNotification,
 } from "../../services/internApi";
 
+const COMMON_NOTIFICATIONS_API_URL =
+  "https://internship-portal-backend-olive.vercel.app/api/notifications";
+
 // ============================================================
-// NOTIFICATIONS
-// Fed by the shared notification service: task assigned, scrum
-// reviewed, submission approved or sent back, evaluation
-// completed and certificate issued all land here.
+// NOTIFICATION COLORS
 // ============================================================
 
 const TYPE_COLORS = {
@@ -24,7 +26,33 @@ const TYPE_COLORS = {
   Team: "#F59E0B",
   Info: "#64748B",
   General: "#64748B",
+  Announcement: "#2563EB",
+  System: "#64748B",
+  Alert: "#DC2626",
 };
+
+// ============================================================
+// AUTH CONFIGURATION FOR COMMON API
+// ============================================================
+
+const getAuthConfig = () => {
+  const token =
+    localStorage.getItem("token") ||
+    localStorage.getItem("authToken") ||
+    localStorage.getItem("accessToken");
+
+  return token
+    ? {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    : {};
+};
+
+// ============================================================
+// DATE FORMAT
+// ============================================================
 
 function formatWhen(value) {
   if (!value) return "";
@@ -36,72 +64,279 @@ function formatWhen(value) {
   return date.toLocaleString();
 }
 
+// ============================================================
+// NOTIFICATIONS COMPONENT
+// ============================================================
+
 function Notifications() {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const load = useCallback(async () => {
+  // ============================================================
+  // LOAD INTERN + COMMON NOTIFICATIONS
+  // ============================================================
+
+  const load = useCallback(async (silent = false) => {
     try {
-      setLoading(true);
-      setError("");
+      if (!silent) {
+        setLoading(true);
+        setError("");
+      }
 
-      const { notifications: items } = await getNotifications();
+      const results = await Promise.allSettled([
+        getNotifications(),
 
-      setNotifications(items);
+        axios.get(
+          COMMON_NOTIFICATIONS_API_URL,
+          getAuthConfig()
+        ),
+      ]);
+
+      let internNotifications = [];
+      let commonNotifications = [];
+
+      // Existing Intern notifications
+      if (results[0].status === "fulfilled") {
+        internNotifications =
+          results[0].value.notifications || [];
+      }
+
+      // Common notifications (Program Manager announcements)
+      if (results[1].status === "fulfilled") {
+        commonNotifications =
+          results[1].value.data?.data || [];
+      }
+
+      // Add source information for correct API actions
+      const internData = internNotifications.map((item) => ({
+        ...item,
+        notificationSource: "intern",
+      }));
+
+      const commonData = commonNotifications.map((item) => ({
+        ...item,
+        notificationSource: "common",
+      }));
+
+      // Combine and sort notifications
+      const combinedNotifications = [
+        ...internData,
+        ...commonData,
+      ].sort(
+        (a, b) =>
+          new Date(b.createdAt || b.date || 0) -
+          new Date(a.createdAt || a.date || 0)
+      );
+
+      setNotifications(combinedNotifications);
+
+      // Show error only if both APIs fail
+      if (
+        results[0].status === "rejected" &&
+        results[1].status === "rejected"
+      ) {
+        setError("Failed to load notifications.");
+      }
     } catch (err) {
-      setError(err.message || "Failed to load notifications.");
+      if (!silent) {
+        setError(
+          err.message || "Failed to load notifications."
+        );
+      }
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, []);
 
+  // ============================================================
+  // INITIAL LOAD + AUTO REFRESH
+  // ============================================================
+
   useEffect(() => {
     load();
+
+    const timer = setInterval(() => {
+      load(true);
+    }, 15000);
+
+    return () => clearInterval(timer);
   }, [load]);
 
-  const announceChange = () =>
-    window.dispatchEvent(new Event("intern:notifications-changed"));
+  // ============================================================
+  // NOTIFICATION CHANGE EVENT
+  // ============================================================
 
-  const handleMarkRead = async (id) => {
+  const announceChange = () => {
+    window.dispatchEvent(
+      new Event("intern:notifications-changed")
+    );
+  };
+
+  // ============================================================
+  // MARK INDIVIDUAL NOTIFICATION AS READ
+  // ============================================================
+
+  const handleMarkRead = async (notification) => {
     try {
-      await markNotificationRead(id);
+      if (notification.notificationSource === "common") {
+        await axios.put(
+          `${COMMON_NOTIFICATIONS_API_URL}/${notification._id}/read`,
+          {},
+          getAuthConfig()
+        );
+      } else {
+        await markNotificationRead(notification._id);
+      }
 
       setNotifications((previous) =>
         previous.map((item) =>
-          item._id === id ? { ...item, isRead: true, unread: false } : item
+          item._id === notification._id &&
+          item.notificationSource ===
+            notification.notificationSource
+            ? {
+                ...item,
+                isRead: true,
+                unread: false,
+              }
+            : item
         )
       );
 
       announceChange();
     } catch (err) {
-      setError(err.message || "Failed to update the notification.");
+      setError(
+        err.message || "Failed to update the notification."
+      );
     }
   };
+
+  // ============================================================
+  // MARK ALL NOTIFICATIONS AS READ
+  // ============================================================
 
   const handleMarkAll = async () => {
     try {
-      const updated = await markAllNotificationsRead();
+      const results = await Promise.allSettled([
+        markAllNotificationsRead(),
 
-      setNotifications(updated);
+        axios.put(
+          `${COMMON_NOTIFICATIONS_API_URL}/read-all`,
+          {},
+          getAuthConfig()
+        ),
+      ]);
+
+      const internSuccess = results[0].status === "fulfilled";
+      const commonSuccess = results[1].status === "fulfilled";
+
+      if (!internSuccess && !commonSuccess) {
+        throw new Error("Unable to update notifications.");
+      }
+
+      setNotifications((previous) =>
+        previous.map((item) => {
+          if (
+            item.notificationSource === "intern" &&
+            internSuccess
+          ) {
+            return {
+              ...item,
+              isRead: true,
+              unread: false,
+            };
+          }
+
+          if (
+            item.notificationSource === "common" &&
+            commonSuccess
+          ) {
+            return {
+              ...item,
+              isRead: true,
+              unread: false,
+            };
+          }
+
+          return item;
+        })
+      );
+
       announceChange();
+
+      if (!internSuccess || !commonSuccess) {
+        setError(
+          "Some notifications could not be marked as read."
+        );
+      } else {
+        setError("");
+      }
     } catch (err) {
-      setError(err.message || "Failed to update notifications.");
+      setError(
+        err.message || "Failed to update notifications."
+      );
     }
   };
 
-  const handleDelete = async (id) => {
+  // ============================================================
+  // DELETE NOTIFICATION
+  // ============================================================
+
+  const handleDelete = async (notification) => {
     try {
-      await deleteNotification(id);
+      if (notification.notificationSource === "common") {
+        await axios.delete(
+          `${COMMON_NOTIFICATIONS_API_URL}/${notification._id}`,
+          getAuthConfig()
+        );
+      } else {
+        await deleteNotification(notification._id);
+      }
 
-      setNotifications((previous) => previous.filter((item) => item._id !== id));
+      setNotifications((previous) =>
+        previous.filter(
+          (item) =>
+            !(
+              item._id === notification._id &&
+              item.notificationSource ===
+                notification.notificationSource
+            )
+        )
+      );
+
       announceChange();
     } catch (err) {
-      setError(err.message || "Failed to delete the notification.");
+      setError(
+        err.message || "Failed to delete the notification."
+      );
     }
   };
 
-  const unreadCount = notifications.filter((item) => !item.isRead).length;
+  // ============================================================
+  // UNREAD COUNT
+  // ============================================================
+
+  const unreadCount = notifications.filter(
+    (item) => !item.isRead
+  ).length;
+
+  // ============================================================
+  // LOADING SCREEN
+  // ============================================================
+
+  if (loading) {
+    return (
+      <div className="text-sm text-[#64748B]">
+        Loading notifications...
+      </div>
+    );
+  }
+
+  // ============================================================
+  // MAIN UI
+  // ============================================================
 
   return (
     <div>
@@ -117,7 +352,9 @@ function Notifications() {
 
           <p className="mt-1 text-sm text-[#64748B]">
             {unreadCount > 0
-              ? `${unreadCount} unread notification${unreadCount === 1 ? "" : "s"}`
+              ? `${unreadCount} unread notification${
+                  unreadCount === 1 ? "" : "s"
+                }`
               : "You are all caught up."}
           </p>
         </div>
@@ -134,21 +371,28 @@ function Notifications() {
         )}
       </div>
 
+      {/* ERROR MESSAGE */}
+
       {error && (
         <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-[#DC2626]">
           {error}
         </div>
       )}
 
-      {loading ? (
-        <p className="text-sm text-[#64748B]">Loading notifications...</p>
-      ) : notifications.length === 0 ? (
+      {/* EMPTY STATE */}
+
+      {notifications.length === 0 ? (
         <div className="relative overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white p-8 text-center shadow-sm">
           <div className="absolute inset-x-0 top-0 h-1 gradient-stroke" />
 
-          <Bell size={26} className="mx-auto text-[#64748B]" />
+          <Bell
+            size={26}
+            className="mx-auto text-[#64748B]"
+          />
 
-          <h2 className="mt-4 font-bold text-[#172033]">No notifications yet</h2>
+          <h2 className="mt-4 font-bold text-[#172033]">
+            No notifications yet
+          </h2>
 
           <p className="mt-2 text-sm text-[#64748B]">
             You will be notified when a task is assigned or your work is
@@ -158,13 +402,16 @@ function Notifications() {
       ) : (
         <div className="space-y-3">
           {notifications.map((notification) => {
-            const accent = TYPE_COLORS[notification.type] || "#64748B";
+            const accent =
+              TYPE_COLORS[notification.type] || "#64748B";
 
             return (
               <div
-                key={notification._id}
+                key={`${notification.notificationSource}-${notification._id}`}
                 className={`group relative overflow-hidden rounded-2xl border bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md ${
-                  notification.isRead ? "border-[#E2E8F0]" : "border-[#2563EB]/40"
+                  notification.isRead
+                    ? "border-[#E2E8F0]"
+                    : "border-[#2563EB]/40"
                 }`}
               >
                 <div
@@ -187,10 +434,19 @@ function Notifications() {
 
                       <span
                         className="rounded-full px-2 py-0.5 text-[10px] font-bold"
-                        style={{ background: `${accent}18`, color: accent }}
+                        style={{
+                          background: `${accent}18`,
+                          color: accent,
+                        }}
                       >
                         {notification.type}
                       </span>
+
+                      {notification.priority === "High" && (
+                        <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-700">
+                          High Priority
+                        </span>
+                      )}
                     </div>
 
                     <p className="mt-2 text-sm leading-6 text-[#64748B]">
@@ -199,7 +455,10 @@ function Notifications() {
 
                     <div className="mt-2 flex flex-wrap items-center gap-3">
                       <span className="text-xs text-[#94A3B8]">
-                        {formatWhen(notification.createdAt)}
+                        {formatWhen(
+                          notification.createdAt ||
+                            notification.date
+                        )}
                       </span>
 
                       {notification.link && (
@@ -207,7 +466,7 @@ function Notifications() {
                           to={notification.link}
                           onClick={() =>
                             !notification.isRead &&
-                            handleMarkRead(notification._id)
+                            handleMarkRead(notification)
                           }
                           className="text-xs font-semibold text-[#2563EB] transition hover:underline"
                         >
@@ -217,11 +476,15 @@ function Notifications() {
                     </div>
                   </div>
 
+                  {/* ACTION BUTTONS */}
+
                   <div className="flex shrink-0 items-center gap-2">
                     {!notification.isRead && (
                       <button
                         type="button"
-                        onClick={() => handleMarkRead(notification._id)}
+                        onClick={() =>
+                          handleMarkRead(notification)
+                        }
                         className="rounded-lg border border-[#E2E8F0] px-3 py-1.5 text-xs font-semibold text-[#64748B] transition hover:border-[#2563EB] hover:text-[#2563EB]"
                       >
                         Mark read
@@ -230,7 +493,9 @@ function Notifications() {
 
                     <button
                       type="button"
-                      onClick={() => handleDelete(notification._id)}
+                      onClick={() =>
+                        handleDelete(notification)
+                      }
                       aria-label="Delete notification"
                       className="rounded-lg border border-[#E2E8F0] p-1.5 text-[#DC2626] transition hover:bg-red-50"
                     >

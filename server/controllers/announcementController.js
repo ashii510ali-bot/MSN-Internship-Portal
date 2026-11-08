@@ -1,14 +1,229 @@
+
 const Announcement = require("../models/Announcement");
+const Notification = require("../models/Notification");
+const MentorNotification = require("../models/mentor/MentorNotification");
+const User = require("../models/User");
+
+const { ROLES } = require("../constants/roles");
 
 // ============================================================
-// PROJECT MANAGER NOTIFICATION HELPER
+// NORMALIZE ANNOUNCEMENT AUDIENCE
 // ============================================================
 
-const {
-  createProjectManagerAnnouncementNotification,
-} = require(
-  "./projectManager/projectManagerNotificationController"
-);
+const normalizeAudience = (audience) => {
+  const audienceMap = {
+    All: "All",
+    Interns: "Interns",
+    "All Interns": "Interns",
+    Mentors: "Mentors",
+    "All Mentors": "Mentors",
+    "Project Managers": "Project Managers",
+  };
+
+  return audienceMap[audience || "All"] || null;
+};
+
+// ============================================================
+// GET RECIPIENT ROLES
+// ============================================================
+
+const getRecipientRoles = (audience) => {
+  switch (audience) {
+    case "Interns":
+      return [ROLES.INTERN, ROLES.SUPER_ADMIN];
+
+    case "Mentors":
+      return [ROLES.MENTOR, ROLES.SUPER_ADMIN];
+
+    case "Project Managers":
+      return [ROLES.PROJECT_MANAGER, ROLES.SUPER_ADMIN];
+
+    case "All":
+      return [
+        ROLES.INTERN,
+        ROLES.MENTOR,
+        ROLES.PROJECT_MANAGER,
+        ROLES.SUPER_ADMIN,
+      ];
+
+    default:
+      return [];
+  }
+};
+
+// ============================================================
+// SYNC MENTOR ANNOUNCEMENT NOTIFICATIONS
+// ============================================================
+
+const syncMentorAnnouncementNotifications = async (
+  announcement,
+  audience
+) => {
+  const announcementId = String(announcement._id);
+
+  // Only Mentors and All audiences receive Mentor notifications.
+  if (audience !== "Mentors" && audience !== "All") {
+    await MentorNotification.deleteMany({
+      sourceType: "Announcement",
+      sourceId: announcementId,
+    });
+
+    return;
+  }
+
+  // Get active Mentor accounts only.
+  const mentors = await User.find({
+    role: ROLES.MENTOR,
+    status: "Active",
+  }).select("_id");
+
+  const mentorIds = mentors.map((mentor) => mentor._id);
+
+  // Remove notifications for users who are no longer eligible.
+  await MentorNotification.deleteMany({
+    sourceType: "Announcement",
+    sourceId: announcementId,
+    recipientId: { $nin: mentorIds },
+  });
+
+  if (mentors.length === 0) {
+    return;
+  }
+
+  // Create or update one notification per Mentor.
+  const operations = mentors.map((mentor) => ({
+    updateOne: {
+      filter: {
+        recipientId: mentor._id,
+        sourceType: "Announcement",
+        sourceId: announcementId,
+      },
+
+      update: {
+        $set: {
+          title: announcement.title,
+          message: announcement.description,
+          type: "Announcement",
+          priority: announcement.priority || "Medium",
+
+          recipientId: mentor._id,
+
+          sourceRole: "Program Manager",
+          sourceType: "Announcement",
+          sourceId: announcementId,
+
+          relatedId: announcementId,
+          relatedName: "Program Announcement",
+
+          createdBy: "Program Manager",
+        },
+
+        $setOnInsert: {
+          isRead: false,
+        },
+      },
+
+      upsert: true,
+    },
+  }));
+
+  await MentorNotification.bulkWrite(operations);
+};
+
+// ============================================================
+// SYNC GENERAL + MENTOR NOTIFICATIONS
+// ============================================================
+
+const syncAnnouncementNotifications = async (announcement) => {
+  const announcementId = String(announcement._id);
+
+  // Draft announcements should not generate notifications.
+  if (announcement.status !== "Published") {
+    await Notification.deleteMany({
+      sourceType: "Announcement",
+      sourceId: announcementId,
+    });
+
+    await MentorNotification.deleteMany({
+      sourceType: "Announcement",
+      sourceId: announcementId,
+    });
+
+    return;
+  }
+
+  const audience = normalizeAudience(announcement.audience);
+
+  if (!audience) {
+    throw new Error("Invalid announcement audience.");
+  }
+
+  const recipientRoles = getRecipientRoles(audience);
+
+  const recipients = await User.find({
+    role: { $in: recipientRoles },
+    status: "Active",
+  }).select("_id role");
+
+  const recipientIds = recipients.map((user) => String(user._id));
+
+  // Remove general notifications for users no longer eligible.
+  await Notification.deleteMany({
+    sourceType: "Announcement",
+    sourceId: announcementId,
+    recipientId: { $nin: recipientIds },
+  });
+
+  if (recipients.length > 0) {
+    const operations = recipients.map((user) => ({
+      updateOne: {
+        filter: {
+          recipientId: String(user._id),
+          sourceType: "Announcement",
+          sourceId: announcementId,
+        },
+
+        update: {
+          $set: {
+            userId: user._id,
+            recipientId: String(user._id),
+            recipientRole: user.role,
+
+            title: announcement.title,
+            message: announcement.description,
+            type: "Announcement",
+            priority: announcement.priority || "Medium",
+
+            sourceRole: ROLES.PROGRAM_MANAGER,
+            sourceType: "Announcement",
+            sourceId: announcementId,
+
+            relatedId: announcementId,
+            relatedType: "Announcement",
+            relatedName: "Program Announcement",
+
+            createdBy: "Program Manager",
+            senderRole: ROLES.PROGRAM_MANAGER,
+          },
+
+          $setOnInsert: {
+            isRead: false,
+          },
+        },
+
+        upsert: true,
+      },
+    }));
+
+    await Notification.bulkWrite(operations);
+  }
+
+  // Also sync notifications into Mentor's own collection.
+  await syncMentorAnnouncementNotifications(
+    announcement,
+    audience
+  );
+};
 
 // ============================================================
 // CREATE ANNOUNCEMENT
@@ -25,18 +240,17 @@ const createAnnouncement = async (req, res) => {
       date,
     } = req.body;
 
-    if (!title || !title.trim()) {
+    if (!title || !String(title).trim()) {
       return res.status(400).json({
         success: false,
         message: "Announcement title is required.",
       });
     }
 
-    if (!description || !description.trim()) {
+    if (!description || !String(description).trim()) {
       return res.status(400).json({
         success: false,
-        message:
-          "Announcement description is required.",
+        message: "Announcement description is required.",
       });
     }
 
@@ -47,71 +261,38 @@ const createAnnouncement = async (req, res) => {
       });
     }
 
-    const announcement =
-      await Announcement.create({
-        title: title.trim(),
-        description: description.trim(),
-        audience:
-          audience || "All Interns",
-        priority:
-          priority || "Medium",
-        status:
-          status || "Published",
-        date,
-        createdBy:
-          "Program Manager",
+    const normalizedAudience = normalizeAudience(audience);
+
+    if (!normalizedAudience) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid announcement audience.",
       });
-
-    // ========================================================
-    // SEND NOTIFICATION TO PROJECT MANAGER
-    // ========================================================
-
-    try {
-      await createProjectManagerAnnouncementNotification({
-        title:
-          announcement.title,
-
-        message:
-          announcement.description,
-
-        priority:
-          announcement.priority ||
-          "Medium",
-
-        sourceRole:
-          "Program Manager",
-
-        sourceId:
-          announcement._id,
-
-        createdBy:
-          "Program Manager",
-      });
-    } catch (notificationError) {
-      // Announcement should still be created
-      // even if notification creation fails.
-      console.error(
-        "Project Manager Notification Error:",
-        notificationError
-      );
     }
+
+    const announcement = await Announcement.create({
+      title: String(title).trim(),
+      description: String(description).trim(),
+      audience: normalizedAudience,
+      priority: priority || "Medium",
+      status: status || "Published",
+      date,
+      createdBy: "Program Manager",
+    });
+
+    await syncAnnouncementNotifications(announcement);
 
     return res.status(201).json({
       success: true,
-      message:
-        "Announcement created successfully.",
+      message: "Announcement created successfully.",
       data: announcement,
     });
   } catch (error) {
-    console.error(
-      "Create Announcement Error:",
-      error
-    );
+    console.error("Create Announcement Error:", error);
 
     return res.status(500).json({
       success: false,
-      message:
-        "Failed to create announcement.",
+      message: "Failed to create announcement.",
       error: error.message,
     });
   }
@@ -123,10 +304,9 @@ const createAnnouncement = async (req, res) => {
 
 const getAnnouncements = async (req, res) => {
   try {
-    const announcements =
-      await Announcement.find().sort({
-        createdAt: -1,
-      });
+    const announcements = await Announcement.find().sort({
+      createdAt: -1,
+    });
 
     return res.status(200).json({
       success: true,
@@ -134,15 +314,11 @@ const getAnnouncements = async (req, res) => {
       data: announcements,
     });
   } catch (error) {
-    console.error(
-      "Get Announcements Error:",
-      error
-    );
+    console.error("Get Announcements Error:", error);
 
     return res.status(500).json({
       success: false,
-      message:
-        "Failed to fetch announcements.",
+      message: "Failed to fetch announcements.",
       error: error.message,
     });
   }
@@ -152,21 +328,14 @@ const getAnnouncements = async (req, res) => {
 // GET SINGLE ANNOUNCEMENT
 // ============================================================
 
-const getAnnouncementById = async (
-  req,
-  res
-) => {
+const getAnnouncementById = async (req, res) => {
   try {
-    const announcement =
-      await Announcement.findById(
-        req.params.id
-      );
+    const announcement = await Announcement.findById(req.params.id);
 
     if (!announcement) {
       return res.status(404).json({
         success: false,
-        message:
-          "Announcement not found.",
+        message: "Announcement not found.",
       });
     }
 
@@ -175,15 +344,11 @@ const getAnnouncementById = async (
       data: announcement,
     });
   } catch (error) {
-    console.error(
-      "Get Announcement Error:",
-      error
-    );
+    console.error("Get Announcement Error:", error);
 
     return res.status(500).json({
       success: false,
-      message:
-        "Failed to fetch announcement.",
+      message: "Failed to fetch announcement.",
       error: error.message,
     });
   }
@@ -193,10 +358,7 @@ const getAnnouncementById = async (
 // UPDATE ANNOUNCEMENT
 // ============================================================
 
-const updateAnnouncement = async (
-  req,
-  res
-) => {
+const updateAnnouncement = async (req, res) => {
   try {
     const {
       title,
@@ -207,85 +369,77 @@ const updateAnnouncement = async (
       date,
     } = req.body;
 
-    const announcement =
-      await Announcement.findById(
-        req.params.id
-      );
+    const announcement = await Announcement.findById(req.params.id);
 
     if (!announcement) {
       return res.status(404).json({
         success: false,
-        message:
-          "Announcement not found.",
+        message: "Announcement not found.",
       });
     }
 
-    if (!title || !title.trim()) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Announcement title is required.",
-      });
+    if (title !== undefined) {
+      if (!String(title).trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "Announcement title is required.",
+        });
+      }
+
+      announcement.title = String(title).trim();
     }
 
-    if (
-      !description ||
-      !description.trim()
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Announcement description is required.",
-      });
+    if (description !== undefined) {
+      if (!String(description).trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "Announcement description is required.",
+        });
+      }
+
+      announcement.description = String(description).trim();
     }
 
-    if (!date) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Announcement date is required.",
-      });
+    if (audience !== undefined) {
+      const normalizedAudience = normalizeAudience(audience);
+
+      if (!normalizedAudience) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid announcement audience.",
+        });
+      }
+
+      announcement.audience = normalizedAudience;
     }
 
-    announcement.title =
-      title.trim();
+    if (priority !== undefined) {
+      announcement.priority = priority;
+    }
 
-    announcement.description =
-      description.trim();
+    if (status !== undefined) {
+      announcement.status = status;
+    }
 
-    announcement.audience =
-      audience ||
-      announcement.audience;
+    if (date !== undefined) {
+      announcement.date = date;
+    }
 
-    announcement.priority =
-      priority ||
-      announcement.priority;
+    const updatedAnnouncement = await announcement.save();
 
-    announcement.status =
-      status ||
-      announcement.status;
-
-    announcement.date = date;
-
-    const updatedAnnouncement =
-      await announcement.save();
+    await syncAnnouncementNotifications(updatedAnnouncement);
 
     return res.status(200).json({
       success: true,
-      message:
-        "Announcement updated successfully.",
+      message: "Announcement updated successfully.",
       data: updatedAnnouncement,
     });
   } catch (error) {
-    console.error(
-      "Update Announcement Error:",
-      error
-    );
+    console.error("Update Announcement Error:", error);
 
     return res.status(500).json({
       success: false,
-      message:
-        "Failed to update announcement.",
+      message: "Failed to update announcement.",
       error: error.message,
     });
   }
@@ -295,41 +449,41 @@ const updateAnnouncement = async (
 // DELETE ANNOUNCEMENT
 // ============================================================
 
-const deleteAnnouncement = async (
-  req,
-  res
-) => {
+const deleteAnnouncement = async (req, res) => {
   try {
-    const announcement =
-      await Announcement.findById(
-        req.params.id
-      );
+    const announcement = await Announcement.findById(req.params.id);
 
     if (!announcement) {
       return res.status(404).json({
         success: false,
-        message:
-          "Announcement not found.",
+        message: "Announcement not found.",
       });
     }
+
+    const announcementId = String(announcement._id);
+
+    await Notification.deleteMany({
+      sourceType: "Announcement",
+      sourceId: announcementId,
+    });
+
+    await MentorNotification.deleteMany({
+      sourceType: "Announcement",
+      sourceId: announcementId,
+    });
 
     await announcement.deleteOne();
 
     return res.status(200).json({
       success: true,
-      message:
-        "Announcement deleted successfully.",
+      message: "Announcement and related notifications deleted successfully.",
     });
   } catch (error) {
-    console.error(
-      "Delete Announcement Error:",
-      error
-    );
+    console.error("Delete Announcement Error:", error);
 
     return res.status(500).json({
       success: false,
-      message:
-        "Failed to delete announcement.",
+      message: "Failed to delete announcement.",
       error: error.message,
     });
   }

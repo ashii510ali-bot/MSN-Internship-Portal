@@ -1,21 +1,17 @@
-const mongoose = require("mongoose");
 
-// ============================================================
-// MENTOR NOTIFICATION SCHEMA
-// Mirrors ProjectManagerNotification's pattern, scoped to Mentor.
-// ============================================================
+const mongoose = require("mongoose");
 
 const mentorNotificationSchema = new mongoose.Schema(
   {
     title: {
       type: String,
-      required: [true, "Notification title is required"],
+      required: true,
       trim: true,
     },
 
     message: {
       type: String,
-      required: [true, "Notification message is required"],
+      required: true,
       trim: true,
     },
 
@@ -27,6 +23,7 @@ const mentorNotificationSchema = new mongoose.Schema(
         "Task",
         "System",
         "Alert",
+        "Announcement",
       ],
       default: "System",
     },
@@ -37,7 +34,6 @@ const mentorNotificationSchema = new mongoose.Schema(
       default: "Medium",
     },
 
-    // The mentor (User) this notification belongs to
     recipientId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -53,7 +49,13 @@ const mentorNotificationSchema = new mongoose.Schema(
 
     sourceType: {
       type: String,
-      enum: ["Submission", "Evaluation", "Task", "System"],
+      enum: [
+        "Submission",
+        "Evaluation",
+        "Task",
+        "System",
+        "Announcement",
+      ],
       default: "System",
     },
 
@@ -90,7 +92,6 @@ const mentorNotificationSchema = new mongoose.Schema(
   }
 );
 
-module.exports = mongoose.model(
-  "MentorNotification",
-  mentorNotificationSchema
-);
+module.exports =
+  mongoose.models.MentorNotification ||
+  mongoose.model("MentorNotification", mentorNotificationSchema);

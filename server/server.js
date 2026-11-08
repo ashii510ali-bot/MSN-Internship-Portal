@@ -1,3 +1,4 @@
+
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
@@ -15,13 +16,15 @@ const { ROLES } = require("./constants/roles");
 // ROUTES
 // ============================================================
 
-// Authentication (shared by every role)
+// Authentication
 const authRoutes = require("./routes/authRoutes");
+
+// Common Notifications
+const notificationRoutes = require("./routes/notificationRoutes");
 
 // Program Manager
 const cohortRoutes = require("./routes/cohortRoutes");
 const projectRoutes = require("./routes/projectRoutes");
-const notificationRoutes = require("./routes/notificationRoutes");
 const reportRoutes = require("./routes/reportRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
 const announcementRoutes = require("./routes/announcementRoutes");
@@ -78,7 +81,7 @@ app.use(
         return callback(null, true);
       }
 
-      // Allow existing configured origins
+      // Allow configured origins
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
@@ -98,10 +101,9 @@ app.use(
 );
 
 app.use(express.json({ limit: "5mb" }));
+
 // ============================================================
 // ROLE GUARDS
-// Mounted here rather than inside each router so the permission
-// map for the whole portal is visible in one place.
 // ============================================================
 
 const programManagerOnly = [
@@ -114,9 +116,15 @@ const projectManagerOnly = [
   allowRoles(ROLES.PROJECT_MANAGER, ROLES.SUPER_ADMIN),
 ];
 
-const mentorOnly = [protect, allowRoles(ROLES.MENTOR, ROLES.SUPER_ADMIN)];
+const mentorOnly = [
+  protect,
+  allowRoles(ROLES.MENTOR, ROLES.SUPER_ADMIN),
+];
 
-const superAdminOnly = [protect, allowRoles(ROLES.SUPER_ADMIN)];
+const superAdminOnly = [
+  protect,
+  allowRoles(ROLES.SUPER_ADMIN),
+];
 
 // ============================================================
 // AUTHENTICATION
@@ -125,15 +133,22 @@ const superAdminOnly = [protect, allowRoles(ROLES.SUPER_ADMIN)];
 app.use("/api/auth", authRoutes);
 
 // ============================================================
-// PROGRAM MANAGER  (pages 18 - 19)
+// COMMON NOTIFICATIONS
+// Available to all authenticated roles
+// ============================================================
+
+app.use("/api/notifications", notificationRoutes);
+
+// ============================================================
+// PROGRAM MANAGER
 // ============================================================
 
 app.use("/api/cohorts", ...programManagerOnly, cohortRoutes);
 app.use("/api/projects", ...programManagerOnly, projectRoutes);
-app.use("/api/notifications", ...programManagerOnly, notificationRoutes);
 app.use("/api/reports", ...programManagerOnly, reportRoutes);
 app.use("/api/dashboard", ...programManagerOnly, dashboardRoutes);
 app.use("/api/announcements", ...programManagerOnly, announcementRoutes);
+
 app.use(
   "/api/program-manager-profile",
   ...programManagerOnly,
@@ -141,26 +156,30 @@ app.use(
 );
 
 // ============================================================
-// SUPER ADMIN  (page 20)
+// SUPER ADMIN
 // ============================================================
 
 app.use("/api/super-admin/users", ...superAdminOnly, superAdminUsersRoutes);
 app.use("/api/super-admin/programs", ...superAdminOnly, superAdminProgramsRoutes);
+
 app.use(
   "/api/super-admin/audit-logs",
   ...superAdminOnly,
   superAdminAuditLogsRoutes
 );
+
 app.use(
   "/api/super-admin/notifications",
   ...superAdminOnly,
   superAdminNotificationsRoutes
 );
+
 app.use(
   "/api/super-admin/platform-settings",
   ...superAdminOnly,
   superAdminPlatformSettingsRoutes
 );
+
 app.use(
   "/api/super-admin/roles-matrix",
   ...superAdminOnly,
@@ -168,7 +187,7 @@ app.use(
 );
 
 // ============================================================
-// PROJECT MANAGER  (pages 11 - 14)
+// PROJECT MANAGER
 // ============================================================
 
 app.use(
@@ -176,26 +195,31 @@ app.use(
   ...projectManagerOnly,
   projectManagerTeamRoutes
 );
+
 app.use(
   "/api/project-manager/projects-tasks",
   ...projectManagerOnly,
   projectManagerProjectsTasksRoutes
 );
+
 app.use(
   "/api/project-manager/scrum-review",
   ...projectManagerOnly,
   projectManagerScrumReviewRoutes
 );
+
 app.use(
   "/api/project-manager/notifications",
   ...projectManagerOnly,
   projectManagerNotificationRoutes
 );
+
 app.use(
   "/api/project-manager/todos",
   ...projectManagerOnly,
   projectManagerTodoRoutes
 );
+
 app.use(
   "/api/project-manager/profile",
   ...projectManagerOnly,
@@ -210,18 +234,24 @@ app.use(
 );
 
 // ============================================================
-// MENTOR  (pages 15 - 17)
+// MENTOR
 // ============================================================
 
 app.use("/api/mentor/dashboard", ...mentorOnly, mentorDashboardRoutes);
 app.use("/api/mentor/interns", ...mentorOnly, mentorInternRoutes);
 app.use("/api/mentor/submissions", ...mentorOnly, mentorSubmissionRoutes);
 app.use("/api/mentor/evaluations", ...mentorOnly, mentorEvaluationRoutes);
-app.use("/api/mentor/notifications", ...mentorOnly, mentorNotificationRoutes);
+
+app.use(
+  "/api/mentor/notifications",
+  ...mentorOnly,
+  mentorNotificationRoutes
+);
+
 app.use("/api/mentor/profile", ...mentorOnly, mentorProfileRoutes);
 
 // ============================================================
-// INTERN  (pages 4 - 10)
+// INTERN
 // The intern router applies protect + allowRoles internally.
 // ============================================================
 

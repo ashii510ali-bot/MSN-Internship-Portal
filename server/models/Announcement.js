@@ -19,12 +19,14 @@ const announcementSchema = new mongoose.Schema(
       type: String,
       enum: [
         "All",
+        "Interns",
+        "Mentors",
+        "Project Managers",
+
+        // Legacy values: old announcements compatibility
         "All Interns",
         "All Mentors",
         "Program Managers",
-        "Project Managers",
-        "Interns",
-        "Mentors",
       ],
       default: "All",
     },
@@ -46,8 +48,6 @@ const announcementSchema = new mongoose.Schema(
       default: Date.now,
     },
 
-    // Authentication/token ki requirement nahi.
-    // Created by simple text ke taur par save hoga.
     createdBy: {
       type: String,
       default: "Program Manager",
@@ -63,4 +63,3 @@ module.exports = mongoose.model(
   "Announcement",
   announcementSchema
 );
-

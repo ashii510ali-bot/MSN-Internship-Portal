@@ -1,3 +1,4 @@
+
 const express = require("express");
 
 const {
@@ -10,22 +11,31 @@ const {
   deleteNotification,
 } = require("../controllers/notificationController");
 
+const protect = require("../middleware/authMiddleware");
+const allowRoles = require("../middleware/roleMiddleware");
+
 const router = express.Router();
 
-// ============================================================
-// NOTIFICATIONS
-// No authentication required for current project stage
-// Same approach as Announcements
-// ============================================================
+// All common notification routes require login
+router.use(protect);
 
-// GET ALL
+// GET CURRENT USER NOTIFICATIONS
 router.get("/", getNotifications);
 
-// GET UNREAD
+// GET CURRENT USER UNREAD NOTIFICATIONS
 router.get("/unread", getUnreadNotifications);
 
-// CREATE
-router.post("/", createNotification);
+// CREATE NOTIFICATION
+// Only authorized management roles can create notifications
+router.post(
+  "/",
+  allowRoles(
+    "super_admin",
+    "program_manager",
+    "project_manager"
+  ),
+  createNotification
+);
 
 // MARK ALL AS READ
 router.put(
@@ -45,7 +55,7 @@ router.put(
   markNotificationAsUnread
 );
 
-// DELETE
+// DELETE NOTIFICATION
 router.delete(
   "/:id",
   deleteNotification

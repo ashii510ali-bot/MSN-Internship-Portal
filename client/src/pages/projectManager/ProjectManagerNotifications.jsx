@@ -1,8 +1,10 @@
+
 import React, {
   useEffect,
   useMemo,
   useState,
 } from "react";
+
 import axios from "axios";
 
 import {
@@ -19,8 +21,40 @@ import {
   UserRound,
 } from "lucide-react";
 
+// ============================================================
+// API URLS
+// ============================================================
+
+// Existing Project Manager notifications
 const NOTIFICATIONS_API_URL =
   "https://internship-portal-backend-olive.vercel.app/api/project-manager/notifications";
+
+// Common notifications and Program Manager announcements
+const COMMON_NOTIFICATIONS_API_URL =
+  "https://internship-portal-backend-olive.vercel.app/api/notifications";
+
+// ============================================================
+// AUTH CONFIG
+// ============================================================
+
+const getAuthConfig = () => {
+  const token =
+    localStorage.getItem("token") ||
+    localStorage.getItem("authToken") ||
+    localStorage.getItem("accessToken");
+
+  return token
+    ? {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    : {};
+};
+
+// ============================================================
+// MAIN COMPONENT
+// ============================================================
 
 function ProjectManagerNotifications() {
   const [notifications, setNotifications] =
@@ -45,15 +79,11 @@ function ProjectManagerNotifications() {
   });
 
   // ============================================================
-  // INITIAL LOAD
+  // INITIAL LOAD + AUTO REFRESH
   // ============================================================
 
   useEffect(() => {
     loadNotifications();
-
-    // Refresh notifications automatically
-    // so new Admin / Program Manager announcements
-    // appear without manually refreshing the page.
 
     const refreshTimer = setInterval(() => {
       loadNotifications(true);
@@ -96,7 +126,7 @@ function ProjectManagerNotifications() {
   };
 
   // ============================================================
-  // LOAD NOTIFICATIONS
+  // LOAD NOTIFICATIONS FROM BOTH APIS
   // ============================================================
 
   const loadNotifications = async (
@@ -107,17 +137,81 @@ function ProjectManagerNotifications() {
         setLoading(true);
       }
 
-      const response = await axios.get(
-        NOTIFICATIONS_API_URL
+      const results = await Promise.allSettled([
+        // Existing PM notifications
+        axios.get(NOTIFICATIONS_API_URL),
+
+        // Common individual notifications
+        axios.get(
+          COMMON_NOTIFICATIONS_API_URL,
+          getAuthConfig()
+        ),
+      ]);
+
+      let existingNotifications = [];
+      let commonNotifications = [];
+
+      // --------------------------------------------------------
+      // EXISTING PROJECT MANAGER NOTIFICATIONS
+      // --------------------------------------------------------
+
+      if (results[0].status === "fulfilled") {
+        const data =
+          results[0].value.data?.data;
+
+        if (Array.isArray(data)) {
+          existingNotifications = data.map(
+            (item) => ({
+              ...item,
+              notificationSource: "projectManager",
+            })
+          );
+        }
+      }
+
+      // --------------------------------------------------------
+      // COMMON NOTIFICATIONS / ANNOUNCEMENTS
+      // --------------------------------------------------------
+
+      if (results[1].status === "fulfilled") {
+        const data =
+          results[1].value.data?.data;
+
+        if (Array.isArray(data)) {
+          commonNotifications = data.map(
+            (item) => ({
+              ...item,
+              notificationSource: "common",
+            })
+          );
+        }
+      }
+
+      // Both APIs failed
+      if (
+        results[0].status === "rejected" &&
+        results[1].status === "rejected"
+      ) {
+        throw results[0].reason;
+      }
+
+      // --------------------------------------------------------
+      // COMBINE BOTH NOTIFICATION LISTS
+      // --------------------------------------------------------
+
+      const combinedNotifications = [
+        ...existingNotifications,
+        ...commonNotifications,
+      ];
+
+      combinedNotifications.sort(
+        (a, b) =>
+          new Date(b.createdAt || 0) -
+          new Date(a.createdAt || 0)
       );
 
-      const data = Array.isArray(
-        response.data?.data
-      )
-        ? response.data.data
-        : [];
+      setNotifications(combinedNotifications);
 
-      setNotifications(data);
     } catch (error) {
       console.error(
         "Notifications loading error:",
@@ -151,8 +245,7 @@ function ProjectManagerNotifications() {
   const highPriorityCount =
     notifications.filter(
       (notification) =>
-        notification.priority ===
-          "High" &&
+        notification.priority === "High" &&
         !notification.isRead
     ).length;
 
@@ -164,9 +257,7 @@ function ProjectManagerNotifications() {
         }
 
         const notificationDate =
-          new Date(
-            notification.createdAt
-          );
+          new Date(notification.createdAt);
 
         const today = new Date();
 
@@ -184,9 +275,7 @@ function ProjectManagerNotifications() {
   const filteredNotifications =
     useMemo(() => {
       const search =
-        searchTerm
-          .toLowerCase()
-          .trim();
+        searchTerm.toLowerCase().trim();
 
       return notifications.filter(
         (notification) => {
@@ -231,32 +320,47 @@ function ProjectManagerNotifications() {
     ]);
 
   // ============================================================
-  // MARK ONE AS READ
+  // MARK ONE NOTIFICATION AS READ
   // ============================================================
 
   const markAsRead = async (id) => {
     try {
-      const response =
-        await axios.put(
-          `${NOTIFICATIONS_API_URL}/${id}/read`
+      const notification =
+        notifications.find(
+          (item) => item._id === id
         );
 
-      const updatedNotification =
-        response.data?.data;
+      if (!notification) return;
 
-      if (!updatedNotification) {
-        return;
-      }
+      const isCommon =
+        notification.notificationSource ===
+        "common";
 
-      setNotifications(
-        (previous) =>
-          previous.map(
-            (notification) =>
-              notification._id === id
-                ? updatedNotification
-                : notification
-          )
+      const apiUrl = isCommon
+        ? COMMON_NOTIFICATIONS_API_URL
+        : NOTIFICATIONS_API_URL;
+
+      const config = isCommon
+        ? getAuthConfig()
+        : {};
+
+      const endpoint = isCommon
+        ? `${apiUrl}/${id}/read`
+        : `${apiUrl}/${id}/read`;
+
+      await axios.put(endpoint, {}, config);
+
+      setNotifications((previous) =>
+        previous.map((item) =>
+          item._id === id
+            ? {
+                ...item,
+                isRead: true,
+              }
+            : item
+        )
       );
+
     } catch (error) {
       console.error(
         "Mark read error:",
@@ -272,7 +376,7 @@ function ProjectManagerNotifications() {
   };
 
   // ============================================================
-  // MARK ALL AS READ
+  // MARK ALL NOTIFICATIONS AS READ
   // ============================================================
 
   const markAllAsRead = async () => {
@@ -281,25 +385,42 @@ function ProjectManagerNotifications() {
     }
 
     try {
-      const response =
-        await axios.put(
+      const results = await Promise.allSettled([
+        // Existing PM notification API
+        axios.put(
           `${NOTIFICATIONS_API_URL}/mark-all-read`
+        ),
+
+        // Common notification API
+        axios.put(
+          `${COMMON_NOTIFICATIONS_API_URL}/read-all`,
+          {},
+          getAuthConfig()
+        ),
+      ]);
+
+      const successCount = results.filter(
+        (result) => result.status === "fulfilled"
+      ).length;
+
+      await loadNotifications(true);
+
+      if (successCount === 2) {
+        showToast(
+          "All notifications marked as read."
         );
+      } else if (successCount === 1) {
+        showToast(
+          "Some notifications were marked as read.",
+          "error"
+        );
+      } else {
+        showToast(
+          "Unable to mark notifications as read.",
+          "error"
+        );
+      }
 
-      const updatedNotifications =
-        Array.isArray(
-          response.data?.data
-        )
-          ? response.data.data
-          : [];
-
-      setNotifications(
-        updatedNotifications
-      );
-
-      showToast(
-        "All notifications marked as read."
-      );
     } catch (error) {
       console.error(
         "Mark all read error:",
@@ -307,55 +428,66 @@ function ProjectManagerNotifications() {
       );
 
       showToast(
-        error.response?.data?.message ||
-          "Unable to mark all notifications as read.",
+        "Unable to mark all notifications as read.",
         "error"
       );
     }
   };
 
   // ============================================================
-  // DELETE
+  // DELETE NOTIFICATION
   // ============================================================
 
-  const deleteNotification =
-    async () => {
-      if (!deleteTarget?._id) {
-        return;
-      }
+  const deleteNotification = async () => {
+    if (!deleteTarget?._id) {
+      return;
+    }
 
-      try {
-        await axios.delete(
-          `${NOTIFICATIONS_API_URL}/${deleteTarget._id}`
-        );
+    try {
+      const isCommon =
+        deleteTarget.notificationSource ===
+        "common";
 
-        setNotifications(
-          (previous) =>
-            previous.filter(
-              (notification) =>
-                notification._id !==
-                deleteTarget._id
-            )
-        );
+      const apiUrl = isCommon
+        ? COMMON_NOTIFICATIONS_API_URL
+        : NOTIFICATIONS_API_URL;
 
-        setDeleteTarget(null);
+      const config = isCommon
+        ? getAuthConfig()
+        : {};
 
-        showToast(
-          "Notification deleted successfully."
-        );
-      } catch (error) {
-        console.error(
-          "Delete notification error:",
-          error
-        );
+      await axios.delete(
+        `${apiUrl}/${deleteTarget._id}`,
+        config
+      );
 
-        showToast(
-          error.response?.data?.message ||
-            "Unable to delete notification.",
-          "error"
-        );
-      }
-    };
+      setNotifications((previous) =>
+        previous.filter(
+          (notification) =>
+            notification._id !==
+            deleteTarget._id
+        )
+      );
+
+      setDeleteTarget(null);
+
+      showToast(
+        "Notification deleted successfully."
+      );
+
+    } catch (error) {
+      console.error(
+        "Delete notification error:",
+        error
+      );
+
+      showToast(
+        error.response?.data?.message ||
+          "Unable to delete notification.",
+        "error"
+      );
+    }
+  };
 
   // ============================================================
   // HELPERS
@@ -388,9 +520,7 @@ function ProjectManagerNotifications() {
       return AlertTriangle;
     }
 
-    if (
-      type.includes("system")
-    ) {
+    if (type.includes("system")) {
       return ShieldAlert;
     }
 
@@ -405,21 +535,15 @@ function ProjectManagerNotifications() {
         notification?.type || ""
       ).toLowerCase();
 
-    if (
-      type.includes("announcement")
-    ) {
+    if (type.includes("announcement")) {
       return "bg-blue-50 text-[#2563EB]";
     }
 
-    if (
-      type.includes("alert")
-    ) {
+    if (type.includes("alert")) {
       return "bg-red-50 text-[#DC2626]";
     }
 
-    if (
-      type.includes("system")
-    ) {
+    if (type.includes("system")) {
       return "bg-cyan-50 text-[#0891B2]";
     }
 
@@ -440,9 +564,7 @@ function ProjectManagerNotifications() {
     return "border-blue-200 bg-blue-50 text-[#2563EB]";
   };
 
-  const formatDate = (
-    date
-  ) => {
+  const formatDate = (date) => {
     if (!date) {
       return "";
     }
@@ -457,8 +579,7 @@ function ProjectManagerNotifications() {
       notificationDate.getTime();
 
     const minutes = Math.floor(
-      difference /
-        (1000 * 60)
+      difference / (1000 * 60)
     );
 
     if (minutes < 1) {
@@ -482,7 +603,7 @@ function ProjectManagerNotifications() {
     );
 
     if (days < 7) {
-      return `${days} day${
+      return ` ${days} day${
         days > 1 ? "s" : ""
       } ago`;
     }
@@ -500,27 +621,25 @@ function ProjectManagerNotifications() {
   const getSourceLabel = (
     notification
   ) => {
-    if (
-      notification.sourceRole
-    ) {
+    if (notification.sourceRole) {
       return notification.sourceRole;
     }
 
-    if (
-      notification.createdBy
-    ) {
+    if (notification.createdBy) {
       return notification.createdBy;
     }
 
     return "System";
   };
 
+  // ============================================================
+  // UI
+  // ============================================================
+
   return (
     <div className="min-h-screen bg-[#F8FAFC] px-4 py-6 sm:px-6 lg:px-8">
 
-      {/* ====================================================== */}
       {/* HEADER */}
-      {/* ====================================================== */}
 
       <div className="mb-7 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
 
@@ -560,14 +679,11 @@ function ProjectManagerNotifications() {
           className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#E2E8F0] bg-white px-5 py-3 text-sm font-semibold text-[#172033] shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[#2563EB] hover:text-[#2563EB] hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
         >
           <CheckCheck size={18} />
-
           Mark All Read
         </button>
       </div>
 
-      {/* ====================================================== */}
       {/* STATS */}
-      {/* ====================================================== */}
 
       <div className="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-3">
 
@@ -593,21 +709,15 @@ function ProjectManagerNotifications() {
         />
       </div>
 
-      {/* ====================================================== */}
       {/* MAIN CARD */}
-      {/* ====================================================== */}
 
       <div className="relative overflow-hidden rounded-2xl bg-white shadow-sm">
-
-        {/* Gradient border/stroke */}
 
         <div className="h-[3px] w-full bg-gradient-to-r from-[#2563EB] via-[#22D3EE] to-[#DC2626]" />
 
         <div className="p-4 sm:p-6">
 
-          {/* ================================================== */}
           {/* SEARCH + FILTER */}
-          {/* ================================================== */}
 
           <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
 
@@ -622,9 +732,7 @@ function ProjectManagerNotifications() {
                 type="text"
                 value={searchTerm}
                 onChange={(event) =>
-                  setSearchTerm(
-                    event.target.value
-                  )
+                  setSearchTerm(event.target.value)
                 }
                 placeholder="Search announcements and notifications..."
                 className="w-full rounded-xl border border-[#E2E8F0] bg-white py-3 pl-10 pr-4 text-sm text-[#172033] outline-none transition focus:border-[#2563EB] focus:ring-2 focus:ring-blue-100"
@@ -641,9 +749,7 @@ function ProjectManagerNotifications() {
                 <button
                   key={item}
                   type="button"
-                  onClick={() =>
-                    setFilter(item)
-                  }
+                  onClick={() => setFilter(item)}
                   className={`rounded-lg px-4 py-2 text-sm font-semibold transition-all ${
                     filter === item
                       ? "bg-[#0E2A52] text-white shadow-sm"
@@ -656,9 +762,7 @@ function ProjectManagerNotifications() {
             </div>
           </div>
 
-          {/* ================================================== */}
           {/* INFO BAR */}
-          {/* ================================================== */}
 
           <div className="mb-5 flex flex-col gap-3 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
 
@@ -688,9 +792,7 @@ function ProjectManagerNotifications() {
             </div>
           </div>
 
-          {/* ================================================== */}
           {/* NOTIFICATIONS */}
-          {/* ================================================== */}
 
           {loading ? (
             <div className="flex min-h-[350px] items-center justify-center">
@@ -714,8 +816,7 @@ function ProjectManagerNotifications() {
               </h3>
 
               <p className="mt-1 max-w-md text-sm leading-6 text-[#64748B]">
-                {searchTerm ||
-                filter !== "All"
+                {searchTerm || filter !== "All"
                   ? "No notifications match your current search or filter."
                   : "New Admin or Program Manager announcements will appear here automatically."}
               </p>
@@ -726,21 +827,17 @@ function ProjectManagerNotifications() {
               {filteredNotifications.map(
                 (notification) => {
                   const TypeIcon =
-                    getTypeIcon(
-                      notification
-                    );
+                    getTypeIcon(notification);
 
                   return (
                     <div
-                      key={notification._id}
+                      key={`${notification.notificationSource}-${notification._id}`}
                       className={`group relative overflow-hidden rounded-2xl border transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md ${
                         notification.isRead
                           ? "border-[#E2E8F0] bg-white"
                           : "border-blue-200 bg-[#F8FBFF]"
                       }`}
                     >
-
-                      {/* unread stroke */}
 
                       {!notification.isRead && (
                         <div className="absolute left-0 top-0 h-full w-1 bg-gradient-to-b from-[#2563EB] via-[#22D3EE] to-[#EF4444]" />
@@ -808,25 +905,17 @@ function ProjectManagerNotifications() {
                               <UserRound size={12} />
 
                               From{" "}
-                              {getSourceLabel(
-                                notification
-                              )}
+                              {getSourceLabel(notification)}
                             </span>
 
                             {notification.relatedName && (
                               <span className="text-xs text-[#64748B]">
-                                •{" "}
-                                {
-                                  notification.relatedName
-                                }
+                                • {notification.relatedName}
                               </span>
                             )}
 
                             <span className="text-xs text-[#94A3B8]">
-                              •{" "}
-                              {formatDate(
-                                notification.createdAt
-                              )}
+                              • {formatDate(notification.createdAt)}
                             </span>
                           </div>
                         </div>
@@ -840,9 +929,7 @@ function ProjectManagerNotifications() {
                               type="button"
                               title="Mark as read"
                               onClick={() =>
-                                markAsRead(
-                                  notification._id
-                                )
+                                markAsRead(notification._id)
                               }
                               className="rounded-lg p-2 text-[#2563EB] transition-all hover:bg-blue-50 hover:text-[#1D4ED8]"
                             >
@@ -854,9 +941,7 @@ function ProjectManagerNotifications() {
                             type="button"
                             title="Delete notification"
                             onClick={() =>
-                              setDeleteTarget(
-                                notification
-                              )
+                              setDeleteTarget(notification)
                             }
                             className="rounded-lg p-2 text-[#DC2626] transition-all hover:bg-red-50"
                           >
@@ -873,9 +958,7 @@ function ProjectManagerNotifications() {
         </div>
       </div>
 
-      {/* ====================================================== */}
       {/* DELETE MODAL */}
-      {/* ====================================================== */}
 
       {deleteTarget && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[#06152B]/60 p-4 backdrop-blur-sm">
@@ -894,9 +977,7 @@ function ProjectManagerNotifications() {
 
                 <button
                   type="button"
-                  onClick={() =>
-                    setDeleteTarget(null)
-                  }
+                  onClick={() => setDeleteTarget(null)}
                   className="rounded-lg p-2 text-[#64748B] transition hover:bg-slate-100"
                 >
                   <X size={20} />
@@ -920,9 +1001,7 @@ function ProjectManagerNotifications() {
 
                 <button
                   type="button"
-                  onClick={() =>
-                    setDeleteTarget(null)
-                  }
+                  onClick={() => setDeleteTarget(null)}
                   className="rounded-xl border border-[#E2E8F0] px-5 py-3 text-sm font-semibold text-[#64748B] transition hover:bg-slate-50"
                 >
                   Cancel
@@ -941,9 +1020,7 @@ function ProjectManagerNotifications() {
         </div>
       )}
 
-      {/* ====================================================== */}
       {/* TOAST */}
-      {/* ====================================================== */}
 
       {toast.show && (
         <div

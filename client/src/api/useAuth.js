@@ -1,6 +1,8 @@
+
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "./client";
 import { queryKeys } from "./queryKeys";
+import { clearSession } from "../lib/session";
 
 export function getStoredUser() {
   if (typeof window === "undefined") return null;
@@ -54,7 +56,6 @@ export function useSignIn() {
 
   return useMutation({
     mutationFn: async (payload) => {
-      // Backend returns { success, token, user } at the top level
       const res = await apiClient("/api/auth/login", {
         method: "POST",
         body: JSON.stringify(payload),
@@ -83,18 +84,18 @@ export function useSignOut() {
 
   return useMutation({
     mutationFn: async () => {
-      // JWT auth is stateless, so we just resolve immediately
       return true;
     },
 
     onSettled: () => {
-      localStorage.removeItem("msn_token");
-      localStorage.removeItem("msn_user");
-      localStorage.removeItem("msn_active_role");
+      // Clear all authentication session keys
+      clearSession();
 
+      // Clear React Query cached data
       queryClient.clear();
 
-      window.location.href = "/sign-in";
+      // Redirect directly to login
+      window.location.replace("/login");
     },
   });
 }

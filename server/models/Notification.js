@@ -1,11 +1,9 @@
+
 const mongoose = require("mongoose");
 
 // ============================================================
 // UNIFIED NOTIFICATION SCHEMA
-// The intern branch addressed notifications with `userId`, the
-// mentor branch with `recipientId`. Both field names are kept
-// and mirrored so every existing page keeps working while a
-// single collection powers the whole portal.
+// Supports intern, mentor, project manager and admin notifications.
 // ============================================================
 
 const notificationSchema = new mongoose.Schema(
@@ -13,11 +11,11 @@ const notificationSchema = new mongoose.Schema(
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      required: false,
       index: true,
     },
 
-    // String mirror of userId (mentor module writes/reads this).
+    // String mirror of userId
     recipientId: {
       type: String,
       default: "",
@@ -27,6 +25,7 @@ const notificationSchema = new mongoose.Schema(
     recipientRole: {
       type: String,
       default: "intern",
+      index: true,
     },
 
     title: {
@@ -46,6 +45,29 @@ const notificationSchema = new mongoose.Schema(
       default: "General",
     },
 
+    priority: {
+      type: String,
+      enum: ["Low", "Medium", "High"],
+      default: "Medium",
+    },
+
+    // Source information
+    sourceRole: {
+      type: String,
+      default: "System",
+    },
+
+    sourceType: {
+      type: String,
+      default: "",
+      index: true,
+    },
+
+    sourceId: {
+      type: String,
+      default: "",
+    },
+
     relatedId: {
       type: String,
       default: "",
@@ -54,6 +76,12 @@ const notificationSchema = new mongoose.Schema(
     relatedType: {
       type: String,
       default: "",
+    },
+
+    relatedName: {
+      type: String,
+      default: "",
+      trim: true,
     },
 
     link: {
@@ -84,13 +112,20 @@ const notificationSchema = new mongoose.Schema(
   }
 );
 
-// The intern layout counts `notification.unread === true`.
+// ============================================================
+// INTERN LAYOUT COMPATIBILITY
+// Existing frontend uses notification.unread
+// ============================================================
+
 notificationSchema.virtual("unread").get(function readFlag() {
   return this.isRead === false;
 });
 
-// Keep userId and recipientId in sync whichever one was supplied.
-notificationSchema.pre("validate", function mirrorRecipient(next) {
+// ============================================================
+// KEEP USER ID AND RECIPIENT ID SYNCHRONIZED
+// ============================================================
+
+notificationSchema.pre("validate", function mirrorRecipient() {
   if (!this.userId && this.recipientId) {
     if (mongoose.Types.ObjectId.isValid(this.recipientId)) {
       this.userId = new mongoose.Types.ObjectId(this.recipientId);
@@ -100,9 +135,31 @@ notificationSchema.pre("validate", function mirrorRecipient(next) {
   if (this.userId) {
     this.recipientId = String(this.userId);
   }
-
-  next();
 });
+
+// ============================================================
+// PREVENT DUPLICATE ANNOUNCEMENT NOTIFICATIONS
+// One announcement can have only one notification per user.
+// ============================================================
+
+notificationSchema.index(
+  {
+    recipientId: 1,
+    sourceType: 1,
+    sourceId: 1,
+  },
+  {
+    unique: true,
+    partialFilterExpression: {
+      sourceType: "Announcement",
+      sourceId: { $type: "string", $gt: "" },
+    },
+  }
+);
+
+// ============================================================
+// EXPORT MODEL
+// ============================================================
 
 module.exports =
   mongoose.models.Notification ||
