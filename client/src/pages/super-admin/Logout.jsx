@@ -7,16 +7,12 @@ function AdminLogout() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const logoutAdmin = () => {
-      // Clear all saved login credentials
-      clearSession();
+    // Clear saved login credentials
+    clearSession();
 
-      // Redirect to Login page
-      window.location.replace("/login");
-    };
-
-    logoutAdmin();
-  }, []);
+    // Redirect to Login page without reloading
+    navigate("/login", { replace: true });
+  }, [navigate]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
@@ -24,6 +20,7 @@ function AdminLogout() {
         <p className="text-gray-700 text-lg font-semibold">
           Logging out...
         </p>
+
         <p className="text-gray-500 text-sm mt-2">
           Redirecting to Login page...
         </p>
