@@ -1,5 +1,12 @@
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+
+import { useNavigate } from "react-router-dom";
+
 import { apiClient } from "./client";
 import { queryKeys } from "./queryKeys";
 import { clearSession } from "../lib/session";
@@ -25,9 +32,7 @@ export function getStoredRole() {
 
   if (typeof window === "undefined") return null;
 
-  const legacyRole = localStorage.getItem("msn_active_role");
-
-  return legacyRole || null;
+  return localStorage.getItem("msn_active_role") || null;
 }
 
 export function useCurrentUser() {
@@ -81,6 +86,7 @@ export function useSignIn() {
 
 export function useSignOut() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   return useMutation({
     mutationFn: async () => {
@@ -88,14 +94,14 @@ export function useSignOut() {
     },
 
     onSettled: () => {
-      // Clear all authentication session keys
+      // Clear authentication session
       clearSession();
 
-      // Clear React Query cached data
+      // Clear cached user data
       queryClient.clear();
 
-      // Redirect directly to login
-      window.location.replace("/login");
+      // Redirect without browser page reload
+      navigate("/login", { replace: true });
     },
   });
 }
