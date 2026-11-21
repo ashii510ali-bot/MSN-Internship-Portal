@@ -1,4 +1,5 @@
 
+
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
@@ -90,12 +91,22 @@ app.use(
         return callback(null, true);
       }
 
-      // Allow configured frontend origins
+      // Allow configured frontend domains
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
 
-      // Allow local development ports
+      // Allow preview deployments of this Vercel project only
+      const isMsnVercelPreview =
+        /^https:\/\/msn-internship-portal-deploy-[a-z0-9-]+\.vercel\.app$/i.test(
+          origin
+        );
+
+      if (isMsnVercelPreview) {
+        return callback(null, true);
+      }
+
+      // Allow local development
       if (
         /^http:\/\/(localhost|127\.0\.0\.1):(5173|5174)$/.test(origin)
       ) {
