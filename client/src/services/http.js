@@ -1,14 +1,29 @@
+
 import { getToken, clearSession } from "../lib/session";
 
 // ============================================================
-// HTTP CLIENT
-// A single fetch wrapper for every module. It attaches the JWT
-// from the unified session, normalises the two response shapes
-// the branches used ({ success, data } and bare arrays) and
-// signs the user out on a 401.
+// HTTP CLIENT - RAILWAY BACKEND
 // ============================================================
 
-const API_ROOT = import.meta.env.VITE_API_URL || "/api";
+const configuredUrl = import.meta.env.VITE_API_URL?.trim();
+
+function getApiRoot() {
+  let url =
+    configuredUrl ||
+    "https://wholesome-connection-production-e9828876.up.railway.app";
+
+  // Add HTTPS if the environment variable has no protocol
+  if (!/^https?:\/\//i.test(url)) {
+    url = `https://${url}`;
+  }
+
+  // Remove trailing slash and existing /api
+  url = url.replace(/\/+$/, "").replace(/\/api$/i, "");
+
+  return `${url}/api`;
+}
+
+const API_ROOT = getApiRoot();
 
 export class ApiError extends Error {
   constructor(message, status, data) {
@@ -19,15 +34,34 @@ export class ApiError extends Error {
   }
 }
 
-function buildUrl(endpoint) {
-  if (/^https?:\/\//i.test(endpoint)) return endpoint;
-  if (endpoint.startsWith("/api")) return endpoint;
+// ============================================================
+// BUILD API URL
+// ============================================================
 
-  return `${API_ROOT}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
+function buildUrl(endpoint) {
+  if (/^https?:\/\//i.test(endpoint)) {
+    return endpoint;
+  }
+
+  // Avoid duplicate /api
+  const cleanEndpoint = endpoint.startsWith("/api/")
+    ? endpoint.slice(4)
+    : endpoint;
+
+  return `${API_ROOT}${cleanEndpoint.startsWith("/") ? "" : "/"}${cleanEndpoint}`;
 }
 
+// ============================================================
+// API REQUEST
+// ============================================================
+
 export async function request(endpoint, options = {}) {
-  const { method = "GET", body, headers: extraHeaders, ...rest } = options;
+  const {
+    method = "GET",
+    body,
+    headers: extraHeaders,
+    ...rest
+  } = options;
 
   const headers = new Headers(extraHeaders || {});
 
@@ -75,7 +109,11 @@ export async function request(endpoint, options = {}) {
       window.location.href = "/login";
     }
 
-    throw new ApiError(payload.message || "Your session has expired.", 401, payload);
+    throw new ApiError(
+      payload.message || "Your session has expired.",
+      401,
+      payload
+    );
   }
 
   if (!response.ok || payload.success === false) {
@@ -89,23 +127,38 @@ export async function request(endpoint, options = {}) {
   return payload;
 }
 
-/** Unwrap `{ success, data }` responses; pass anything else through. */
+// ============================================================
+// RESPONSE HELPER
+// ============================================================
+
 export function unwrap(payload, fallback = null) {
-  if (payload && Object.prototype.hasOwnProperty.call(payload, "data")) {
+  if (
+    payload &&
+    Object.prototype.hasOwnProperty.call(payload, "data")
+  ) {
     return payload.data ?? fallback;
   }
 
   return payload ?? fallback;
 }
 
+// ============================================================
+// HTTP METHODS
+// ============================================================
+
 export const http = {
-  get: (endpoint, options) => request(endpoint, { ...options, method: "GET" }),
+  get: (endpoint, options) =>
+    request(endpoint, { ...options, method: "GET" }),
+
   post: (endpoint, body, options) =>
     request(endpoint, { ...options, method: "POST", body }),
+
   put: (endpoint, body, options) =>
     request(endpoint, { ...options, method: "PUT", body }),
+
   patch: (endpoint, body, options) =>
     request(endpoint, { ...options, method: "PATCH", body }),
+
   delete: (endpoint, options) =>
     request(endpoint, { ...options, method: "DELETE" }),
 };

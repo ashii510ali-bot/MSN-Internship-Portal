@@ -2,11 +2,53 @@
 import { getToken, clearSession } from "../lib/session";
 
 // ============================================================
-// API CLIENT
+// API CLIENT URL
+// Uses the unified Railway backend
 // ============================================================
 
-const API_BASE_URL =
-  import.meta.env.VITE_SUPER_ADMIN_API_URL || "/api/super-admin";
+function getSuperAdminApiUrl() {
+  const superAdminUrl =
+    import.meta.env.VITE_SUPER_ADMIN_API_URL?.trim();
+
+  const generalApiUrl =
+    import.meta.env.VITE_API_URL?.trim();
+
+  const defaultUrl =
+    "https://wholesome-connection-production-e9828876.up.railway.app";
+
+  // If Super Admin URL is already a full URL
+  if (/^https?:\/\//i.test(superAdminUrl || "")) {
+    const url = superAdminUrl.replace(/\/+$/, "");
+
+    if (url.endsWith("/api/super-admin")) {
+      return url;
+    }
+
+    if (url.endsWith("/api")) {
+      return `${url}/super-admin`;
+    }
+
+    return `${url}/api/super-admin`;
+  }
+
+  // Otherwise use the common backend URL
+  let url = generalApiUrl || defaultUrl;
+
+  if (!/^https?:\/\//i.test(url)) {
+    url = `https://${url}`;
+  }
+
+  url = url.replace(/\/+$/, "");
+  url = url.replace(/\/api$/i, "");
+
+  return `${url}/api/super-admin`;
+}
+
+const API_BASE_URL = getSuperAdminApiUrl();
+
+// ============================================================
+// API ERROR
+// ============================================================
 
 export class ApiError extends Error {
   constructor(message, status, data) {
@@ -99,10 +141,8 @@ export async function apiClient(endpoint, options = {}) {
     if (response.status === 401) {
       const errData = await response.json().catch(() => ({}));
 
-      // Clear all session keys using unified session handler
       clearSession();
 
-      // Redirect to the correct login route
       if (
         typeof window !== "undefined" &&
         !window.location.pathname.startsWith("/login")
@@ -111,7 +151,9 @@ export async function apiClient(endpoint, options = {}) {
       }
 
       throw new ApiError(
-        errData.message || errData.error || "Your session has expired. Please login again.",
+        errData.message ||
+          errData.error ||
+          "Your session has expired. Please login again.",
         401,
         errData
       );
@@ -125,7 +167,9 @@ export async function apiClient(endpoint, options = {}) {
       const errData = await response.json().catch(() => ({}));
 
       showToast(
-        errData.message || errData.error || "Permission denied for this action",
+        errData.message ||
+          errData.error ||
+          "Permission denied for this action",
         "error"
       );
 

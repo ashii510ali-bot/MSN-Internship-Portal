@@ -1,14 +1,29 @@
-import axios from "axios";
 
+import axios from "axios";
 import { getToken } from "../lib/session";
 
 // ============================================================
-// MENTOR API SERVICE LAYER
-// Centralized axios instance for all Mentor Module requests.
-// Automatically attaches the JWT from localStorage.
+// MENTOR API SERVICE
 // ============================================================
 
-const BASE_URL = `${import.meta.env.VITE_API_URL || "/api"}/mentor`;
+function getApiRoot() {
+  let url = import.meta.env.VITE_API_URL?.trim();
+
+  if (!url) {
+    url = "https://wholesome-connection-production-e9828876.up.railway.app";
+  }
+
+  if (!/^https?:\/\//i.test(url)) {
+    url = `https://${url}`;
+  }
+
+  url = url.replace(/\/+$/, "");
+  url = url.replace(/\/api$/i, "");
+
+  return `${url}/api`;
+}
+
+const BASE_URL = `${getApiRoot()}/mentor`;
 
 const mentorApi = axios.create({
   baseURL: BASE_URL,
@@ -18,6 +33,7 @@ mentorApi.interceptors.request.use((config) => {
   const token = getToken();
 
   if (token) {
+    config.headers = config.headers || {};
     config.headers.Authorization = `Bearer ${token}`;
   }
 
@@ -28,20 +44,24 @@ mentorApi.interceptors.request.use((config) => {
 // DASHBOARD
 // ============================================================
 
-export const getMentorDashboard = () => mentorApi.get("/dashboard");
+export const getMentorDashboard = () =>
+  mentorApi.get("/dashboard");
 
 // ============================================================
 // INTERNS
 // ============================================================
 
-export const getAssignedInterns = () => mentorApi.get("/interns");
+export const getAssignedInterns = () =>
+  mentorApi.get("/interns");
 
 // ============================================================
 // SUBMISSIONS
 // ============================================================
 
 export const getSubmissions = (status) =>
-  mentorApi.get("/submissions", { params: status ? { status } : {} });
+  mentorApi.get("/submissions", {
+    params: status ? { status } : {},
+  });
 
 export const getSubmissionById = (id) =>
   mentorApi.get(`/submissions/${id}`);
@@ -56,7 +76,8 @@ export const requestResubmission = (id, payload) =>
 // EVALUATIONS
 // ============================================================
 
-export const getEvaluations = () => mentorApi.get("/evaluations");
+export const getEvaluations = () =>
+  mentorApi.get("/evaluations");
 
 export const getEvaluationsByIntern = (internId) =>
   mentorApi.get(`/evaluations/${internId}`);
@@ -87,7 +108,8 @@ export const deleteMentorNotification = (id) =>
 // PROFILE
 // ============================================================
 
-export const getMentorProfile = () => mentorApi.get("/profile");
+export const getMentorProfile = () =>
+  mentorApi.get("/profile");
 
 export const updateMentorProfile = (payload) =>
   mentorApi.put("/profile", payload);

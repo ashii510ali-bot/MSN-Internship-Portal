@@ -1,25 +1,11 @@
-import axios from "axios";
 
+import axios from "axios";
 import { getToken, clearSession } from "../lib/session";
 
 // ============================================================
 // GLOBAL AXIOS SETUP
-//
-// The Program Manager and Project Manager pages were written
-// against absolute "https://internship-portal-backend-olive.vercel.app/api/..." URLs and did
-// not send an auth header, because in their own branch those
-// endpoints were unprotected. In the unified backend they are
-// role-guarded.
-//
-// Rather than editing ~10,000 lines of working page code, these
-// interceptors do two things for every axios request in the app:
-//
-//   1. rewrite the hardcoded host onto a relative /api path so
-//      the request goes through the Vite proxy (and works
-//      unchanged in production behind any host)
-//   2. attach the JWT from the unified session
-//
-// Installed once from main.jsx.
+// Uses the same Railway backend as services/http.js
+// Converts old backend URLs and attaches JWT automatically.
 // ============================================================
 
 const LEGACY_HOSTS = [
@@ -27,14 +13,39 @@ const LEGACY_HOSTS = [
   "http://127.0.0.1:5000",
 ];
 
-const API_ROOT = import.meta.env.VITE_API_URL || "";
+function getApiRoot() {
+  let url = import.meta.env.VITE_API_URL?.trim();
+
+  if (!url) {
+    url = "https://wholesome-connection-production-e9828876.up.railway.app";
+  }
+
+  if (!/^https?:\/\//i.test(url)) {
+    url = `https://${url}`;
+  }
+
+  url = url.replace(/\/+$/, "");
+  url = url.replace(/\/api$/i, "");
+
+  return `${url}/api`;
+}
+
+const API_ROOT = getApiRoot();
 
 function normaliseUrl(url) {
   if (!url) return url;
 
   for (const host of LEGACY_HOSTS) {
     if (url.startsWith(host)) {
-      return `${API_ROOT}${url.slice(host.length)}`;
+      let endpoint = url.slice(host.length);
+
+      if (endpoint === "/api") {
+        endpoint = "";
+      } else if (endpoint.startsWith("/api/")) {
+        endpoint = endpoint.slice(4);
+      }
+
+      return `${API_ROOT}${endpoint}`;
     }
   }
 

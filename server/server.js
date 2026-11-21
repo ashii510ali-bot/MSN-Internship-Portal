@@ -64,10 +64,19 @@ const internRoutes = require("./routes/intern/internRoutes");
 
 const app = express();
 
+// ============================================================
+// DATABASE CONNECTION
+// ============================================================
+
 connectDB();
 
+// ============================================================
+// CORS CONFIGURATION
+// ============================================================
+
 const allowedOrigins = (
-  process.env.CLIENT_URLS || "http://localhost:5173,http://127.0.0.1:5173"
+  process.env.CLIENT_URLS ||
+  "https://msn-internship-portal-deploy.vercel.app"
 )
   .split(",")
   .map((origin) => origin.trim())
@@ -76,17 +85,24 @@ const allowedOrigins = (
 app.use(
   cors({
     origin(origin, callback) {
-      // No Origin header = same-origin or server-to-server request.
+      // Allow requests without an Origin header
       if (!origin) {
         return callback(null, true);
       }
 
-      // Allow configured origins
+      // Allow configured frontend origins
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
 
-      // Allow temporary Cloudflare Tunnel URLs
+      // Allow local development ports
+      if (
+        /^http:\/\/(localhost|127\.0\.0\.1):(5173|5174)$/.test(origin)
+      ) {
+        return callback(null, true);
+      }
+
+      // Allow Cloudflare Tunnel URLs
       if (/^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/.test(origin)) {
         return callback(null, true);
       }
@@ -99,6 +115,10 @@ app.use(
     credentials: true,
   })
 );
+
+// ============================================================
+// BODY PARSER
+// ============================================================
 
 app.use(express.json({ limit: "5mb" }));
 
@@ -134,7 +154,6 @@ app.use("/api/auth", authRoutes);
 
 // ============================================================
 // COMMON NOTIFICATIONS
-// Available to all authenticated roles
 // ============================================================
 
 app.use("/api/notifications", notificationRoutes);
@@ -160,7 +179,12 @@ app.use(
 // ============================================================
 
 app.use("/api/super-admin/users", ...superAdminOnly, superAdminUsersRoutes);
-app.use("/api/super-admin/programs", ...superAdminOnly, superAdminProgramsRoutes);
+
+app.use(
+  "/api/super-admin/programs",
+  ...superAdminOnly,
+  superAdminProgramsRoutes
+);
 
 app.use(
   "/api/super-admin/audit-logs",
@@ -226,7 +250,7 @@ app.use(
   projectManagerProfileRoutes
 );
 
-// Intern roster, task assignment and daily scrum review.
+// Intern roster, task assignment and daily scrum review
 app.use(
   "/api/project-manager/workflow",
   ...projectManagerOnly,
@@ -248,17 +272,21 @@ app.use(
   mentorNotificationRoutes
 );
 
-app.use("/api/mentor/profile", ...mentorOnly, mentorProfileRoutes);
+app.use(
+  "/api/mentor/profile",
+  ...mentorOnly,
+  mentorProfileRoutes
+);
 
 // ============================================================
 // INTERN
-// The intern router applies protect + allowRoles internally.
 // ============================================================
 
+// Intern router applies protect + allowRoles internally
 app.use("/api/intern", internRoutes);
 
 // ============================================================
-// HEALTH / ROOT
+// HEALTH CHECK
 // ============================================================
 
 app.get("/api/health", (req, res) => {
@@ -269,6 +297,10 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+// ============================================================
+// ROOT
+// ============================================================
+
 app.get("/", (req, res) => {
   res.json({
     success: true,
@@ -277,7 +309,7 @@ app.get("/", (req, res) => {
 });
 
 // ============================================================
-// 404 + ERROR HANDLING
+// 404 HANDLER
 // ============================================================
 
 app.use((req, res) => {
@@ -286,6 +318,10 @@ app.use((req, res) => {
     message: `Route ${req.method} ${req.originalUrl} was not found.`,
   });
 });
+
+// ============================================================
+// GLOBAL ERROR HANDLER
+// ============================================================
 
 app.use((error, req, res, next) => {
   console.error("Unhandled error:", error);
@@ -302,8 +338,8 @@ app.use((error, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, '0.0.0.0',() => {
-  console.log(`Server running on http://localhost:${PORT}`);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server running on port ${PORT}`);
 });
 
 module.exports = app;
